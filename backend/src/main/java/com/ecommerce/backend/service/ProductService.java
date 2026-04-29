@@ -12,23 +12,25 @@ public class ProductService {
     @Autowired
     private ProductRepository productRepository;
 
-    // Get all products
-    public List<Product> getAllProducts() {
-        return productRepository.findAll();
-    }
-
-    // Get product by ID
-    public Product getProductById(Long id) {
-        return productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found!"));
-    }
-
-    // Add new product
+    // T025: Add product
     public Product addProduct(Product product) {
         return productRepository.save(product);
     }
 
-    // Update product
+    // T026: Get all products
+    public List<Product> getAllProducts() {
+        return productRepository.findAll();
+    }
+
+    // T027: Get product by ID
+    public Product getProductById(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Product not found with id: " + id)
+                );
+    }
+
+    // T027: Update product
     public Product updateProduct(Long id, Product product) {
         Product existing = getProductById(id);
         existing.setName(product.getName());
@@ -45,8 +47,26 @@ public class ProductService {
         productRepository.deleteById(id);
     }
 
-    // Get by category
+    // T028: Search by name or description
+    public List<Product> searchByName(String keyword) {
+        return productRepository.searchByKeyword(keyword);
+    }
+
+    // T028: Filter by category
     public List<Product> getByCategory(String category) {
         return productRepository.findByCategory(category);
+    }
+
+    // T028: Filter by max price
+    public List<Product> getByMaxPrice(Double maxPrice) {
+        return productRepository.findByPriceLessThanEqual(maxPrice);
+    }
+
+    // T028: Filter by category AND price
+    public List<Product> getByCategoryAndPrice(
+            String category, Double maxPrice) {
+        return productRepository.findByCategoryAndPriceLessThanEqual(
+                category, maxPrice
+        );
     }
 }
