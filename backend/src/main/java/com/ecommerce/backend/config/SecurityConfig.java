@@ -48,6 +48,9 @@ public class SecurityConfig {
                         // ✅ PUBLIC - Anyone can VIEW product by category
                         .requestMatchers(HttpMethod.GET, "/api/products/category/**").permitAll()
 
+                        // Cart - needs login
+                        .requestMatchers("/api/cart/**").authenticated()
+
                         // 🔒 SECURED - Only logged in users can ADD products
                         .requestMatchers(HttpMethod.POST, "/api/products/**").authenticated()
 
