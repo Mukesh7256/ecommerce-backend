@@ -18,8 +18,9 @@ public class CartService {
     @Autowired
     private ProductRepository productRepository;
 
-    // ✅ T035 - Add to Cart
-    public Cart addToCart(String userEmail, Long productId, int quantity) {
+    // ✅ T035 + T042 - Add to Cart with Validation
+    public Cart addToCart(String userEmail,
+                          Long productId, int quantity) {
 
         // Check product exists
         Product product = productRepository.findById(productId)
@@ -27,14 +28,45 @@ public class CartService {
                         new RuntimeException("Product not found!")
                 );
 
+        // T042 - Validate stock
+        if (product.getQuantity() <= 0) {
+            throw new RuntimeException(
+                    "Sorry! This product is out of stock!"
+            );
+        }
+
+        // T042 - Validate requested quantity vs stock
+        if (quantity > product.getQuantity()) {
+            throw new RuntimeException(
+                    "Only " + product.getQuantity() +
+                            " items available in stock!"
+            );
+        }
+
         // Check if product already in cart
         Optional<Cart> existing = cartRepository
                 .findByUserEmailAndProductId(userEmail, productId);
 
         if (existing.isPresent()) {
-            // Update quantity if already exists
             Cart cart = existing.get();
-            cart.setQuantity(cart.getQuantity() + quantity);
+            int newQty = cart.getQuantity() + quantity;
+
+            // T042 - Validate total cart quantity
+            if (newQty > product.getQuantity()) {
+                throw new RuntimeException(
+                        "Cannot add more! Only " +
+                                product.getQuantity() +
+                                " items available in stock!"
+                );
+            }
+
+            if (newQty > 10) {
+                throw new RuntimeException(
+                        "Maximum 10 items allowed per product!"
+                );
+            }
+
+            cart.setQuantity(newQty);
             return cartRepository.save(cart);
         }
 
@@ -51,7 +83,7 @@ public class CartService {
         return cartRepository.findByUserEmail(userEmail);
     }
 
-    // ✅ T037 - Update Cart Item Quantity
+    // ✅ T037 + T042 - Update Cart with Validation
     public Cart updateCartItem(Long cartId, int quantity) {
 
         Cart cart = cartRepository.findById(cartId)
@@ -59,19 +91,37 @@ public class CartService {
                         new RuntimeException("Cart item not found!")
                 );
 
-        // If quantity is 0 or less → remove item
+        // T042 - Remove if quantity is 0
         if (quantity <= 0) {
             cartRepository.deleteById(cartId);
             return null;
         }
 
-        // Update quantity
+        // T042 - Validate max quantity
+        if (quantity > 10) {
+            throw new RuntimeException(
+                    "Maximum 10 items allowed per product!"
+            );
+        }
+
+        // T042 - Validate against stock
+        Product product = cart.getProduct();
+        if (quantity > product.getQuantity()) {
+            throw new RuntimeException(
+                    "Only " + product.getQuantity() +
+                            " items available in stock!"
+            );
+        }
+
         cart.setQuantity(quantity);
         return cartRepository.save(cart);
     }
 
     // ✅ T038 - Remove from Cart
     public void removeFromCart(Long cartId) {
+        if (!cartRepository.existsById(cartId)) {
+            throw new RuntimeException("Cart item not found!");
+        }
         cartRepository.deleteById(cartId);
     }
 
@@ -80,9 +130,10 @@ public class CartService {
         cartRepository.deleteByUserEmail(userEmail);
     }
 
-    // BONUS - Get cart total price
+    // BONUS - Get cart total
     public Double getCartTotal(String userEmail) {
-        List<Cart> items = cartRepository.findByUserEmail(userEmail);
+        List<Cart> items = cartRepository
+                .findByUserEmail(userEmail);
         return items.stream()
                 .mapToDouble(item ->
                         item.getProduct().getPrice() * item.getQuantity()
@@ -90,7 +141,7 @@ public class CartService {
                 .sum();
     }
 
-    // BONUS - Get cart item count
+    // BONUS - Get cart count
     public int getCartCount(String userEmail) {
         return cartRepository.countByUserEmail(userEmail);
     }

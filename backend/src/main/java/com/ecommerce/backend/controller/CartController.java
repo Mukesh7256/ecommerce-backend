@@ -17,7 +17,7 @@ public class CartController {
     @Autowired
     private CartService cartService;
 
-    // Helper - get logged in user email from JWT
+    // Helper - get logged in user email
     private String getEmail() {
         return SecurityContextHolder
                 .getContext()
@@ -32,17 +32,39 @@ public class CartController {
     public ResponseEntity<?> addToCart(
             @RequestBody Map<String, Object> request) {
         try {
-            String email = getEmail();
+            // T042 - Validate request
+            if (request.get("productId") == null) {
+                return ResponseEntity.badRequest()
+                        .body("Product ID is required!");
+            }
+            if (request.get("quantity") == null) {
+                return ResponseEntity.badRequest()
+                        .body("Quantity is required!");
+            }
+
             Long productId = Long.valueOf(
                     request.get("productId").toString()
             );
             int quantity = Integer.parseInt(
                     request.get("quantity").toString()
             );
+
+            // T042 - Validate quantity
+            if (quantity <= 0) {
+                return ResponseEntity.badRequest()
+                        .body("Quantity must be at least 1!");
+            }
+            if (quantity > 10) {
+                return ResponseEntity.badRequest()
+                        .body("Maximum 10 items allowed per product!");
+            }
+
+            String email = getEmail();
             Cart cart = cartService.addToCart(
                     email, productId, quantity
             );
             return ResponseEntity.ok(cart);
+
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest()
                     .body(e.getMessage());
@@ -58,7 +80,7 @@ public class CartController {
         return ResponseEntity.ok(items);
     }
 
-    // ✅ T037 - Update Cart Item Quantity
+    // ✅ T037 - Update Cart Quantity
     // PUT http://localhost:8080/api/cart/update/1
     // Body: { "quantity": 3 }
     @PutMapping("/update/{cartId}")
@@ -66,18 +88,33 @@ public class CartController {
             @PathVariable Long cartId,
             @RequestBody Map<String, Object> request) {
         try {
+            // T042 - Validate request
+            if (request.get("quantity") == null) {
+                return ResponseEntity.badRequest()
+                        .body("Quantity is required!");
+            }
+
             int quantity = Integer.parseInt(
                     request.get("quantity").toString()
             );
+
+            // T042 - Validate quantity range
+            if (quantity > 10) {
+                return ResponseEntity.badRequest()
+                        .body("Maximum 10 items allowed per product!");
+            }
+
             Cart updated = cartService.updateCartItem(
                     cartId, quantity
             );
+
             if (updated == null) {
                 return ResponseEntity.ok(
-                        "Item removed because quantity was 0"
+                        "Item removed because quantity was 0!"
                 );
             }
             return ResponseEntity.ok(updated);
+
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest()
                     .body(e.getMessage());
@@ -104,26 +141,41 @@ public class CartController {
     // DELETE http://localhost:8080/api/cart/clear
     @DeleteMapping("/clear")
     public ResponseEntity<String> clearCart() {
-        String email = getEmail();
-        cartService.clearCart(email);
-        return ResponseEntity.ok("Cart cleared successfully!");
+        try {
+            String email = getEmail();
+            cartService.clearCart(email);
+            return ResponseEntity.ok("Cart cleared successfully!");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(e.getMessage());
+        }
     }
 
-    // BONUS - Get cart total price
+    // BONUS - Get cart total
     // GET http://localhost:8080/api/cart/total
     @GetMapping("/total")
-    public ResponseEntity<Double> getTotal() {
-        String email = getEmail();
-        Double total = cartService.getCartTotal(email);
-        return ResponseEntity.ok(total);
+    public ResponseEntity<?> getTotal() {
+        try {
+            String email = getEmail();
+            Double total = cartService.getCartTotal(email);
+            return ResponseEntity.ok(total);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(e.getMessage());
+        }
     }
 
-    // BONUS - Get cart item count
+    // BONUS - Get cart count
     // GET http://localhost:8080/api/cart/count
     @GetMapping("/count")
-    public ResponseEntity<Integer> getCount() {
-        String email = getEmail();
-        int count = cartService.getCartCount(email);
-        return ResponseEntity.ok(count);
+    public ResponseEntity<?> getCount() {
+        try {
+            String email = getEmail();
+            int count = cartService.getCartCount(email);
+            return ResponseEntity.ok(count);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(e.getMessage());
+        }
     }
 }
