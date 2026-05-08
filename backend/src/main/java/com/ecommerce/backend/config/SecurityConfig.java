@@ -51,6 +51,9 @@ public class SecurityConfig {
                         // Cart - needs login
                         .requestMatchers("/api/cart/**").authenticated()
 
+                        // Orders - needs login
+                        .requestMatchers("/api/orders/**").authenticated()
+
                         // 🔒 SECURED - Only logged in users can ADD products
                         .requestMatchers(HttpMethod.POST, "/api/products/**").authenticated()
 
