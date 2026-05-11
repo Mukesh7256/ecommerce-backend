@@ -5,6 +5,7 @@ import com.ecommerce.backend.entity.*;
 import com.ecommerce.backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,9 +25,11 @@ public class OrderService {
     @Autowired
     private UserRepository userRepository;
 
-    // T045: Implement Checkout API
-    // T046: Calculate total price
-    public Order checkout(String userEmail, CheckoutRequest request) {
+    // T047: Save order details
+    // T048: Handle transaction logic
+    @Transactional
+    public Order checkout(String userEmail,
+            CheckoutRequest request) {
 
         // Get cart items
         List<Cart> cartItems = cartRepository
@@ -38,21 +41,17 @@ public class OrderService {
             );
         }
 
-        // Get user details
+        // Get user
         User user = userRepository.findByEmail(userEmail)
             .orElseThrow(() ->
                 new RuntimeException("User not found!")
             );
 
-        // T046: Calculate total price
-        double totalPrice = 0;
-        List<OrderItem> orderItems = new ArrayList<>();
-
-        // Create order first (without items)
+        // T047: Create and save order
         Order order = new Order();
         order.setUserEmail(userEmail);
         order.setUserName(user.getName());
-        order.setStatus("PENDING");
+        order.setStatus("CONFIRMED"); // ← Changed from PENDING
         order.setDeliveryAddress(request.getDeliveryAddress());
         order.setCity(request.getCity());
         order.setState(request.getState());
@@ -66,26 +65,27 @@ public class OrderService {
         order.setOrderDate(LocalDateTime.now());
         order.setDeliveryDate(LocalDateTime.now().plusDays(5));
 
-        // Save order first to get ID
+        // Save order first
         Order savedOrder = orderRepository.save(order);
 
-        // Create order items from cart
+        // T047: Create order items
+        List<OrderItem> orderItems = new ArrayList<>();
+        double totalPrice = 0;
+
         for (Cart cartItem : cartItems) {
             Product product = cartItem.getProduct();
 
-            // Validate stock
+            // T048: Validate stock
             if (product.getQuantity() < cartItem.getQuantity()) {
                 throw new RuntimeException(
                     "Insufficient stock for: " + product.getName()
                 );
             }
 
-            // T046: Calculate item total
             double itemTotal = product.getPrice()
                 * cartItem.getQuantity();
             totalPrice += itemTotal;
 
-            // Create order item
             OrderItem orderItem = new OrderItem();
             orderItem.setOrder(savedOrder);
             orderItem.setProduct(product);
@@ -95,37 +95,37 @@ public class OrderService {
             orderItem.setItemTotal(itemTotal);
             orderItems.add(orderItem);
 
-            // Reduce product stock
+            // T048: Reduce stock
             product.setQuantity(
                 product.getQuantity() - cartItem.getQuantity()
             );
             productRepository.save(product);
         }
 
-        // T046: Calculate discount and final price
+        // T046: Calculate prices
         double discountAmount = Math.round(totalPrice * 0.10);
-        double deliveryCharge = totalPrice > 499 ? 0 : 49;
-        double finalPrice = totalPrice - discountAmount + deliveryCharge;
+        double delivery = totalPrice > 499 ? 0 : 49;
+        double finalPrice = totalPrice - discountAmount + delivery;
 
-        // Update order with totals
+        // T047: Update order with all details
         savedOrder.setOrderItems(orderItems);
         savedOrder.setTotalPrice(totalPrice);
         savedOrder.setDiscountAmount(discountAmount);
         savedOrder.setFinalPrice(finalPrice);
 
-        // Clear cart after successful order
+        // T048: Clear cart after order
         cartRepository.deleteByUserEmail(userEmail);
 
         return orderRepository.save(savedOrder);
     }
 
-    // Get user orders
+    // T047: Get user orders
     public List<Order> getUserOrders(String userEmail) {
         return orderRepository
             .findByUserEmailOrderByOrderDateDesc(userEmail);
     }
 
-    // Get order by ID
+    // T047: Get order by ID
     public Order getOrderById(Long id) {
         return orderRepository.findById(id)
             .orElseThrow(() ->
@@ -133,12 +133,13 @@ public class OrderService {
             );
     }
 
-    // Get all orders (Admin)
+    // Get all orders - Admin
     public List<Order> getAllOrders() {
         return orderRepository.findAllByOrderByOrderDateDesc();
     }
 
-    // Update order status (Admin)
+    // Update status - Admin
+    @Transactional
     public Order updateOrderStatus(Long id, String status) {
         Order order = getOrderById(id);
         order.setStatus(status);
@@ -146,6 +147,7 @@ public class OrderService {
     }
 
     // Cancel order
+    @Transactional
     public Order cancelOrder(Long id, String userEmail) {
         Order order = getOrderById(id);
 
@@ -161,7 +163,7 @@ public class OrderService {
             );
         }
 
-        // Restore product stock
+        // T048: Restore stock on cancel
         for (OrderItem item : order.getOrderItems()) {
             Product product = item.getProduct();
             product.setQuantity(
