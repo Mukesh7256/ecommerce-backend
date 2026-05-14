@@ -26,8 +26,8 @@ public class OrderController {
             .getName();
     }
 
-    // T045: Checkout API
-    // POST http://localhost:8080/api/orders/checkout
+    // T051: Checkout integrated with backend
+    // T052: Validate order creation
     @PostMapping("/checkout")
     public ResponseEntity<?> checkout(
             @Valid @RequestBody CheckoutRequest request) {
@@ -42,17 +42,19 @@ public class OrderController {
     }
 
     // Get my orders
-    // GET http://localhost:8080/api/orders/my-orders
     @GetMapping("/my-orders")
-    public ResponseEntity<List<Order>> getMyOrders() {
-        String email = getEmail();
-        return ResponseEntity.ok(
-            orderService.getUserOrders(email)
-        );
+    public ResponseEntity<?> getMyOrders() {
+        try {
+            String email = getEmail();
+            List<Order> orders = orderService.getUserOrders(email);
+            return ResponseEntity.ok(orders);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                .body(e.getMessage());
+        }
     }
 
     // Get order by ID
-    // GET http://localhost:8080/api/orders/1
     @GetMapping("/{id}")
     public ResponseEntity<?> getOrderById(@PathVariable Long id) {
         try {
@@ -65,7 +67,6 @@ public class OrderController {
     }
 
     // Cancel order
-    // PUT http://localhost:8080/api/orders/1/cancel
     @PutMapping("/{id}/cancel")
     public ResponseEntity<?> cancelOrder(@PathVariable Long id) {
         try {
@@ -79,20 +80,27 @@ public class OrderController {
     }
 
     // Admin - Get all orders
-    // GET http://localhost:8080/api/orders/admin/all
     @GetMapping("/admin/all")
-    public ResponseEntity<List<Order>> getAllOrders() {
-        return ResponseEntity.ok(orderService.getAllOrders());
+    public ResponseEntity<?> getAllOrders() {
+        try {
+            return ResponseEntity.ok(orderService.getAllOrders());
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                .body(e.getMessage());
+        }
     }
 
-    // Admin - Update order status
-    // PUT http://localhost:8080/api/orders/admin/1/status
+    // Admin - Update status
     @PutMapping("/admin/{id}/status")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
             @RequestBody Map<String, String> request) {
         try {
             String status = request.get("status");
+            if (status == null || status.isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body("Status is required!");
+            }
             Order order = orderService.updateOrderStatus(id, status);
             return ResponseEntity.ok(order);
         } catch (RuntimeException e) {

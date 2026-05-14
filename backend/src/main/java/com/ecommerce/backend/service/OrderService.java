@@ -25,33 +25,41 @@ public class OrderService {
     @Autowired
     private UserRepository userRepository;
 
-    // T047: Save order details
-    // T048: Handle transaction logic
+    // T051: Checkout integrated with backend
+    // T052: Full validation
     @Transactional
     public Order checkout(String userEmail,
             CheckoutRequest request) {
 
-        // Get cart items
+        // T052: Validate cart not empty
         List<Cart> cartItems = cartRepository
             .findByUserEmail(userEmail);
 
-        if (cartItems.isEmpty()) {
+        if (cartItems == null || cartItems.isEmpty()) {
             throw new RuntimeException(
-                "Cart is empty! Add items before checkout."
+                "Cart is empty! Please add items first."
             );
         }
 
-        // Get user
+        // T052: Validate user exists
         User user = userRepository.findByEmail(userEmail)
             .orElseThrow(() ->
                 new RuntimeException("User not found!")
             );
 
-        // T047: Create and save order
+        // T052: Validate payment method
+        if (!request.getPaymentMethod().equals("COD") &&
+            !request.getPaymentMethod().equals("ONLINE")) {
+            throw new RuntimeException(
+                "Invalid payment method! Use COD or ONLINE."
+            );
+        }
+
+        // T051: Create order
         Order order = new Order();
         order.setUserEmail(userEmail);
         order.setUserName(user.getName());
-        order.setStatus("CONFIRMED"); // ← Changed from PENDING
+        order.setStatus("CONFIRMED");
         order.setDeliveryAddress(request.getDeliveryAddress());
         order.setCity(request.getCity());
         order.setState(request.getState());
@@ -65,27 +73,36 @@ public class OrderService {
         order.setOrderDate(LocalDateTime.now());
         order.setDeliveryDate(LocalDateTime.now().plusDays(5));
 
-        // Save order first
         Order savedOrder = orderRepository.save(order);
 
-        // T047: Create order items
+        // T051 + T052: Process each cart item with validation
         List<OrderItem> orderItems = new ArrayList<>();
         double totalPrice = 0;
 
         for (Cart cartItem : cartItems) {
             Product product = cartItem.getProduct();
 
-            // T048: Validate stock
-            if (product.getQuantity() < cartItem.getQuantity()) {
+            // T052: Validate stock for each item
+            if (product.getQuantity() <= 0) {
                 throw new RuntimeException(
-                    "Insufficient stock for: " + product.getName()
+                    product.getName() + " is out of stock!"
                 );
             }
 
+            if (cartItem.getQuantity() > product.getQuantity()) {
+                throw new RuntimeException(
+                    "Only " + product.getQuantity() +
+                    " units of " + product.getName() +
+                    " available!"
+                );
+            }
+
+            // Calculate item total
             double itemTotal = product.getPrice()
                 * cartItem.getQuantity();
             totalPrice += itemTotal;
 
+            // Create order item
             OrderItem orderItem = new OrderItem();
             orderItem.setOrder(savedOrder);
             orderItem.setProduct(product);
@@ -95,37 +112,42 @@ public class OrderService {
             orderItem.setItemTotal(itemTotal);
             orderItems.add(orderItem);
 
-            // T048: Reduce stock
+            // Reduce stock
             product.setQuantity(
                 product.getQuantity() - cartItem.getQuantity()
             );
             productRepository.save(product);
         }
 
-        // T046: Calculate prices
+        // T052: Validate total price
+        if (totalPrice <= 0) {
+            throw new RuntimeException(
+                "Invalid order total!"
+            );
+        }
+
+        // Calculate final price
         double discountAmount = Math.round(totalPrice * 0.10);
         double delivery = totalPrice > 499 ? 0 : 49;
         double finalPrice = totalPrice - discountAmount + delivery;
 
-        // T047: Update order with all details
+        // Update order
         savedOrder.setOrderItems(orderItems);
         savedOrder.setTotalPrice(totalPrice);
         savedOrder.setDiscountAmount(discountAmount);
         savedOrder.setFinalPrice(finalPrice);
 
-        // T048: Clear cart after order
+        // Clear cart
         cartRepository.deleteByUserEmail(userEmail);
 
         return orderRepository.save(savedOrder);
     }
 
-    // T047: Get user orders
     public List<Order> getUserOrders(String userEmail) {
         return orderRepository
             .findByUserEmailOrderByOrderDateDesc(userEmail);
     }
 
-    // T047: Get order by ID
     public Order getOrderById(Long id) {
         return orderRepository.findById(id)
             .orElseThrow(() ->
@@ -133,20 +155,29 @@ public class OrderService {
             );
     }
 
-    // Get all orders - Admin
     public List<Order> getAllOrders() {
         return orderRepository.findAllByOrderByOrderDateDesc();
     }
 
-    // Update status - Admin
     @Transactional
     public Order updateOrderStatus(Long id, String status) {
+        List<String> validStatuses = List.of(
+            "PENDING", "CONFIRMED",
+            "SHIPPED", "DELIVERED", "CANCELLED"
+        );
+
+        if (!validStatuses.contains(status)) {
+            throw new RuntimeException(
+                "Invalid status! Use: " +
+                String.join(", ", validStatuses)
+            );
+        }
+
         Order order = getOrderById(id);
         order.setStatus(status);
         return orderRepository.save(order);
     }
 
-    // Cancel order
     @Transactional
     public Order cancelOrder(Long id, String userEmail) {
         Order order = getOrderById(id);
@@ -163,13 +194,23 @@ public class OrderService {
             );
         }
 
-        // T048: Restore stock on cancel
-        for (OrderItem item : order.getOrderItems()) {
-            Product product = item.getProduct();
-            product.setQuantity(
-                product.getQuantity() + item.getQuantity()
+        if (order.getStatus().equals("CANCELLED")) {
+            throw new RuntimeException(
+                "Order is already cancelled!"
             );
-            productRepository.save(product);
+        }
+
+        // Restore stock
+        if (order.getOrderItems() != null) {
+            for (OrderItem item : order.getOrderItems()) {
+                Product product = item.getProduct();
+                if (product != null) {
+                    product.setQuantity(
+                        product.getQuantity() + item.getQuantity()
+                    );
+                    productRepository.save(product);
+                }
+            }
         }
 
         order.setStatus("CANCELLED");
