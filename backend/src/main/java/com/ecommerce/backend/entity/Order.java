@@ -1,11 +1,13 @@
 package com.ecommerce.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 // T043: Create Order entity
 // T044: Design DB relationships
@@ -25,6 +27,7 @@ public class Order {
     private String userName;
 
     // T044: One order has many items
+    @JsonBackReference
     @OneToMany(mappedBy = "order",
                cascade = CascadeType.ALL,
                fetch = FetchType.EAGER)
